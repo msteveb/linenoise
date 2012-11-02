@@ -955,7 +955,7 @@ static int linenoisePrompt(struct current *current) {
         /* Only autocomplete when the callback is set. It returns < 0 when
          * there was an error reading from fd. Otherwise it will return the
          * character that should be handled next. */
-        if (c == 9 && completionCallback != NULL) {
+        if (c == '\t' && current->pos == current->chars && completionCallback != NULL) {
             c = completeLine(current);
             /* Return on errors */
             if (c < 0) return current->len;
