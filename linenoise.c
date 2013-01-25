@@ -1285,6 +1285,10 @@ int linenoiseHistoryAdd(const char *line) {
     return 1;
 }
 
+int linenoiseHistoryGetMaxLen(void) {
+  return history_max_len;
+}
+
 int linenoiseHistorySetMaxLen(int len) {
     char **newHistory;
 
