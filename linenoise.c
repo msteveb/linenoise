@@ -187,6 +187,7 @@ void linenoiseHistoryFree(void) {
             free(history[j]);
         free(history);
         history = NULL;
+	history_len = 0;
     }
 }
 
@@ -1282,6 +1283,10 @@ int linenoiseHistoryAdd(const char *line) {
     history[history_len] = linecopy;
     history_len++;
     return 1;
+}
+
+int linenoiseHistoryGetMaxLen(void) {
+  return history_max_len;
 }
 
 int linenoiseHistorySetMaxLen(int len) {
