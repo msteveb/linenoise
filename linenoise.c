@@ -268,7 +268,10 @@ static void linenoiseAtExit(void) {
     linenoiseHistoryFree();
 }
 
-/* gcc/glibc insists that we care about the return code of write! */
+/* gcc/glibc insists that we care about the return code of write!
+ * Clarification: This means that a void-cast like "(void) (EXPR)"
+ * does not work.
+ */
 #define IGNORE_RC(EXPR) if (EXPR) {}
 
 /* This is fdprintf() on some systems, but use a different
