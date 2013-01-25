@@ -602,12 +602,18 @@ static int fd_read(struct current *current)
                     return SPECIAL_UP;
                  case VK_DOWN:
                     return SPECIAL_DOWN;
+                 case VK_INSERT:
+                    return SPECIAL_INSERT;
                  case VK_DELETE:
                     return SPECIAL_DELETE;
                  case VK_HOME:
                     return SPECIAL_HOME;
                  case VK_END:
                     return SPECIAL_END;
+                 case VK_PRIOR:
+                    return SPECIAL_PAGE_UP;
+                 case VK_NEXT:
+                    return SPECIAL_PAGE_DOWN;
                 }
             }
             /* Note that control characters are already translated in AsciiChar */
