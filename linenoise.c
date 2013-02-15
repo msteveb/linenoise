@@ -187,6 +187,7 @@ void linenoiseHistoryFree(void) {
             free(history[j]);
         free(history);
         history = NULL;
+	history_len = 0;
     }
 }
 
