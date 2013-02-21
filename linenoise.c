@@ -383,9 +383,9 @@ static int fd_read(struct current *current)
 
 static int countColorControlChars(char* prompt, int plen)
 {
-    /* ansi color control sequences have the form:
+    /* ANSI color control sequences have the form:
      * "\x1b" "[" [0-9;]+ "m"
-     * We parse with a simple state machine.
+     * We parse them with a simple state machine.
      */
 
     enum {
@@ -695,8 +695,10 @@ static int fd_read(struct current *current)
 
 static int countColorControlChars(char* prompt, int plen)
 {
-  /* For windows we assume that there are no embedded ansi color control sequences */
-  return 0;
+    /* For windows we assume that there are no embedded ansi color
+     * control sequences.
+     */
+    return 0;
 }
 
 static int getWindowSize(struct current *current)
