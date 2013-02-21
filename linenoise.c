@@ -1253,6 +1253,15 @@ history_navigation:
     return current->len;
 }
 
+int linenoiseColumns(void)
+{
+    struct current current;
+    enableRawMode (&current);
+    getWindowSize (&current);
+    disableRawMode (&current);
+    return current.cols;
+}
+
 char *linenoise(const char *prompt)
 {
     int count;
