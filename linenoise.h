@@ -49,6 +49,8 @@ void linenoiseAddCompletion(linenoiseCompletions *, const char *);
 #endif
 
 char *linenoise(const char *prompt);
+void linenoiseSetHidden(int enable);
+int linenoiseGetHidden(void);
 int linenoiseHistoryAdd(const char *line);
 int linenoiseHistorySetMaxLen(int len);
 int linenoiseHistoryGetMaxLen(void);
