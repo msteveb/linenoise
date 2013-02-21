@@ -177,6 +177,9 @@ struct current {
     int x;      /* Current column during output */
     int y;      /* Current row */
 #endif
+    char *capture; /* Capture buffer. Always null terminated */
+    int caplen;    /* Size of the capture buffer, including space
+                    * for the null termination */
 };
 
 static int fd_read(struct current *current);
@@ -872,6 +875,54 @@ static int remove_chars(struct current *current, int pos, int n)
     }
     return removed;
 }
+/**
+ * Returns 0 if no chars were inserted or non-zero otherwise.
+ * We are iterating over an utf string here.
+ */
+static int insert_chars(struct current *current, int pos, const char* chs)
+{
+    int inserted = 0;
+    int ch;
+
+    while (*chs != '\0') {
+        int n = utf8_tounicode (chs, &ch);
+        if (insert_char(current, pos, ch)) {
+            inserted++;
+            pos++;
+        }
+        chs += n;
+    }
+    return inserted;
+}
+
+/**
+ * Captures n characters starting at 'pos' for the cut buffer.
+ */
+static void capture_chars(struct current *current, int pos, int n)
+{
+    if (pos >= 0 && (pos+n-1) < current->chars) {
+        int p1, p2, nbytes;
+
+        p1 = utf8_index(current->buf, pos);
+        p2 = p1 + utf8_index(current->buf + p1, n);
+        nbytes = p2-p1;
+
+        if (nbytes) {
+            nbytes++; /* Space for terminator */
+            if (!current->capture) {
+                current->capture = (char*) malloc (nbytes * sizeof (char));
+                current->caplen = nbytes;
+            } else if (current->caplen < nbytes) {
+                current->capture = (char*) realloc (current->capture,
+                                                    nbytes * sizeof (char));
+                current->caplen = nbytes;
+            }
+
+            memcpy(current->capture, current->buf+p1, nbytes-1);
+            current->capture [nbytes-1] = 0;
+        }
+    }
+}
 
 #ifndef NO_COMPLETION
 static linenoiseCompletionCallback *completionCallback = NULL;
@@ -1022,7 +1073,7 @@ process_char:
              * Future possibility: Toggle Insert/Overwrite Modes
              */
             break;
-        case ctrl('W'):    /* ctrl-w */
+        case ctrl('W'):    /* ctrl-w, delete word at left. save deleted chars */
             /* eat any spaces on the left */
             {
                 int pos = current->pos;
@@ -1035,6 +1086,7 @@ process_char:
                     pos--;
                 }
 
+                capture_chars(current, pos, current->pos - pos);
                 if (remove_chars(current, pos, current->pos - pos)) {
                     refreshLine(current->prompt, current);
                 }
@@ -1224,13 +1276,20 @@ history_navigation:
             current->pos = current->chars;
             refreshLine(current->prompt, current);
             break;
-        case ctrl('U'): /* Ctrl+u, delete to beginning of line. */
+        case ctrl('U'): /* Ctrl+u, delete to beginning of line, save deleted chars. */
+            capture_chars(current, 0, current->pos);
             if (remove_chars(current, 0, current->pos)) {
                 refreshLine(current->prompt, current);
             }
             break;
-        case ctrl('K'): /* Ctrl+k, delete from current to end of line. */
+        case ctrl('K'): /* Ctrl+k, delete from current to end of line, save deleted chars. */
+            capture_chars(current, current->pos, current->chars - current->pos);
             if (remove_chars(current, current->pos, current->chars - current->pos)) {
+                refreshLine(current->prompt, current);
+            }
+            break;
+        case ctrl('Y'): /* Ctrl+y, insert saved chars at current position */
+            if (current->capture && insert_chars(current, current->pos, current->capture)) {
                 refreshLine(current->prompt, current);
             }
             break;
@@ -1279,6 +1338,8 @@ char *linenoise(const char *prompt)
         current.chars = 0;
         current.pos = 0;
         current.prompt = prompt;
+        current.capture = 0;
+        current.caplen = 0;
 
         count = linenoisePrompt(&current);
         disableRawMode(&current);
