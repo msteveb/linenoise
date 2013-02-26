@@ -1096,7 +1096,7 @@ void linenoiseAddCompletion(linenoiseCompletions *lc, const char *str) {
 
 #endif
 
-static int linenoisePrompt(struct current *current) {
+static int linenoiseEdit(struct current *current) {
     int history_index = 0;
 
     /* The latest history entry is always our current buffer, that
@@ -1441,7 +1441,7 @@ char *linenoise(const char *prompt)
         current.prompt = prompt;
         current.capture = NULL;
 
-        count = linenoisePrompt(&current);
+        count = linenoiseEdit(&current);
 
         disableRawMode(&current);
         printf("\n");
@@ -1505,8 +1505,16 @@ int linenoiseHistorySetMaxLen(int len) {
 
         newHistory = (char **)malloc(sizeof(char*)*len);
         if (newHistory == NULL) return 0;
-        if (len < tocopy) tocopy = len;
-        memcpy(newHistory,history+(history_max_len-tocopy), sizeof(char*)*tocopy);
+
+        /* If we can't copy everything, free the elements we'll not use. */
+        if (len < tocopy) {
+            int j;
+
+            for (j = 0; j < tocopy-len; j++) free(history[j]);
+            tocopy = len;
+        }
+        memset(newHistory,0,sizeof(char*)*len);
+        memcpy(newHistory,history+(history_len-tocopy), sizeof(char*)*tocopy);
         free(history);
         history = newHistory;
     }
