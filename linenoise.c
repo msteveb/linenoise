@@ -159,6 +159,9 @@ static int history_max_len = LINENOISE_DEFAULT_HISTORY_MAX_LEN;
 static int history_len = 0;
 static char **history = NULL;
 
+/* input mode: hidden vs. regular */
+static int is_hidden = 0;
+
 /* Structure to contain the status of the current (being edited) line */
 struct current {
     char *buf;  /* Current buffer. Always null terminated */
@@ -221,6 +224,7 @@ static int enableRawMode(struct current *current) {
     struct termios raw;
 
     current->fd = STDIN_FILENO;
+    current->cols = 0;
 
     if (!isatty(current->fd) || isUnsupportedTerm() ||
         tcgetattr(current->fd, &orig_termios) == -1) {
@@ -254,8 +258,6 @@ fatal:
         goto fatal;
     }
     rawmode = 1;
-
-    current->cols = 0;
     return 0;
 }
 
@@ -434,6 +436,42 @@ static int countColorControlChars(const char* prompt)
     return found;
 }
 
+static int queryCursor(int fd, int* cols)
+{
+    /* control sequence - report cursor location */
+    fd_printf(fd, "\x1b[6n");
+
+    /* Parse the response: ESC [ rows ; cols R */
+    if (fd_read_char(fd, 100) == 0x1b &&
+        fd_read_char(fd, 100) == '[') {
+
+        int n = 0;
+	while (1) {
+            int ch = fd_read_char(fd, 100);
+	    if (ch == ';') {
+	        /* Ignore rows */
+	        n = 0;
+	    }
+	    else if (ch == 'R') {
+	        /* Got cols */
+	        if (n != 0 && n < 1000) {
+	            *cols = n;
+		}
+		break;
+	    }
+	    else if (ch >= 0 && ch <= '9') {
+	        n = n * 10 + ch - '0';
+	    }
+	    else {
+	        break;
+	    }
+	}
+	return 1;
+    }
+
+    return 0;
+}
+
 static int getWindowSize(struct current *current)
 {
     struct winsize ws;
@@ -448,38 +486,48 @@ static int getWindowSize(struct current *current)
      * and reading back the cursor position.
      * Note that this is only done once per call to linenoise rather than
      * every time the line is refreshed for efficiency reasons.
+     *
+     * In more detail, we:
+     * (a) request current cursor position,
+     * (b) move cursor far right,
+     * (c) request cursor position again,
+     * (d) at last move back to the old position.
+     * This gives us the width without messing with the externally
+     * visible cursor position.
      */
+
     if (current->cols == 0) {
+        int here;
+
         current->cols = 80;
 
-        /* Move cursor far right and report cursor position, then back to the left */
-        fd_printf(current->fd, "\x1b[999C" "\x1b[6n");
+	/* (a) */
+	if (queryCursor (current->fd, &here)) {
+	    /* (b) */
+	    fd_printf(current->fd, "\x1b[999C");
 
-        /* Parse the response: ESC [ rows ; cols R */
-        if (fd_read_char(current->fd, 100) == 0x1b && fd_read_char(current->fd, 100) == '[') {
-            int n = 0;
-            while (1) {
-                int ch = fd_read_char(current->fd, 100);
-                if (ch == ';') {
-                    /* Ignore rows */
-                    n = 0;
-                }
-                else if (ch == 'R') {
-                    /* Got cols */
-                    if (n != 0 && n < 1000) {
-                        current->cols = n;
-                    }
-                    break;
-                }
-                else if (ch >= 0 && ch <= '9') {
-                    n = n * 10 + ch - '0';
-                }
-                else {
-                    break;
-                }
-            }
-        }
+	    /* (c). Note: If (a) succeeded, then (c) should as well.
+	     * For paranoia we still check and have a fallback action
+	     * for (d) in case of failure..
+	     */
+	    if (!queryCursor (current->fd, &current->cols)) {
+	        /* (d') Unable to get accurate position data, reset
+		 * the cursor to the far left. While this may not
+		 * restore the exact original position it should not
+		 * be too bad.
+		 */
+	        fd_printf(current->fd, "\r");
+	    } else {
+	        /* (d) Reset the cursor back to the original location. */
+
+	        int delta = current->cols - here;
+		if (delta > 0) {
+		    fd_printf(current->fd, "\x1b[%dD",delta);
+		}
+	    }
+	} /* 1st query failed, doing nothing => default 80 */
     }
+
     return 0;
 }
 
@@ -810,13 +858,22 @@ static void refreshLine(const char *prompt, struct current *current)
     for (i = 0; i < chars; i++) {
         int ch;
         int w = utf8_tounicode(buf + b, &ch);
-        if (ch < ' ') {
+        if (!is_hidden && ch < ' ') {
             n++;
         }
         if (pchars + i + n >= current->cols) {
             break;
         }
-        if (ch < ' ') {
+        if (is_hidden) {
+            /* In hidden mode all user-entered characters are shown as
+             * astericks ('*'). This is like control chars, except for
+             * a different translation. */
+            /* assert (b == 0) */
+            outputChars(current, "*", 1);
+            buf += w;
+            /* keep b = 0; */
+        }
+        else if (ch < ' ') {
             /* A control character, so write the buffer so far */
             outputChars(current, buf, b);
             buf += b + w;
@@ -830,6 +887,8 @@ static void refreshLine(const char *prompt, struct current *current)
             b += w;
         }
     }
+
+    /* if (is_hidden) assert (b==0) */
     outputChars(current, buf, b);
 
     /* Erase to right, move cursor to original position */
@@ -906,7 +965,7 @@ static int insert_char(struct current *current, int pos, int ch)
 
 #ifdef USE_TERMIOS
         /* optimise the case where adding a single char to the end and no scrolling is needed */
-        if (current->pos == pos && current->chars == pos) {
+        if (!is_hidden && current->pos == pos && current->chars == pos) {
             if (ch >= ' ' && utf8_strlen(current->prompt, -1) + utf8_strlen(current->buf, current->len) < current->cols - 1) {
                 IGNORE_RC(write(current->fd, buf, n));
                 ret = 2;
@@ -1085,10 +1144,14 @@ static int linenoiseEdit(struct current *current) {
         int c = fd_read(current);
 
 #ifndef NO_COMPLETION
-        /* Only autocomplete when the callback is set. It returns < 0 when
+        /* Completion is forbidden for hidden input mode.
+         * Only autocomplete when the callback is set. It returns < 0 when
          * there was an error reading from fd. Otherwise it will return the
          * character that should be handled next. */
-        if (c == '\t' && current->pos == current->chars && completionCallback != NULL) {
+        if (c == '\t' &&
+            !is_hidden &&
+            current->pos == current->chars &&
+            completionCallback != NULL) {
             c = completeLine(current);
             /* Return on errors */
             if (c < 0) return current->len;
@@ -1155,7 +1218,8 @@ process_char:
             }
             break;
         case ctrl('R'):    /* ctrl-r */
-            {
+            /* Hidden input mode disables use of the history */
+            if (!is_hidden) {
                 /* Display the reverse-i-search prompt and process chars */
                 char rbuf[50];
                 char rprompt[80];
@@ -1310,7 +1374,8 @@ process_char:
         case ctrl('N'):
         case SPECIAL_DOWN:
 history_navigation:
-            if (history_len > 1) {
+            /* Hidden input mode disables use of the history */
+            if (!is_hidden && history_len > 1) {
                 /* Update the current history entry before to
                  * overwrite it with tne next one. */
                 free(history[history_len - 1 - history_index]);
@@ -1420,6 +1485,16 @@ char *linenoise(const char *prompt)
         }
     }
     return strdup(buf);
+}
+
+void linenoiseSetHidden(int enable)
+{
+    is_hidden = enable;
+}
+
+int linenoiseGetHidden(void)
+{
+    return is_hidden;
 }
 
 /* Using a circular buffer is smarter, but a bit more complex to handle. */
