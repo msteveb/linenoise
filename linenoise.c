@@ -224,6 +224,7 @@ static int enableRawMode(struct current *current) {
     struct termios raw;
 
     current->fd = STDIN_FILENO;
+    current->cols = 0;
 
     if (!isatty(current->fd) || isUnsupportedTerm() ||
         tcgetattr(current->fd, &orig_termios) == -1) {
@@ -257,8 +258,6 @@ fatal:
         goto fatal;
     }
     rawmode = 1;
-
-    current->cols = 0;
     return 0;
 }
 
