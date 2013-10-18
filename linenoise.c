@@ -436,6 +436,42 @@ static int countColorControlChars(const char* prompt)
     return found;
 }
 
+static int queryCursor(int fd, int* cols)
+{
+    /* control sequence - report cursor location */
+    fd_printf(fd, "\x1b[6n");
+
+    /* Parse the response: ESC [ rows ; cols R */
+    if (fd_read_char(fd, 100) == 0x1b &&
+        fd_read_char(fd, 100) == '[') {
+
+        int n = 0;
+	while (1) {
+            int ch = fd_read_char(fd, 100);
+	    if (ch == ';') {
+	        /* Ignore rows */
+	        n = 0;
+	    }
+	    else if (ch == 'R') {
+	        /* Got cols */
+	        if (n != 0 && n < 1000) {
+	            *cols = n;
+		}
+		break;
+	    }
+	    else if (ch >= 0 && ch <= '9') {
+	        n = n * 10 + ch - '0';
+	    }
+	    else {
+	        break;
+	    }
+	}
+	return 1;
+    }
+
+    return 0;
+}
+
 static int getWindowSize(struct current *current)
 {
     struct winsize ws;
@@ -450,38 +486,48 @@ static int getWindowSize(struct current *current)
      * and reading back the cursor position.
      * Note that this is only done once per call to linenoise rather than
      * every time the line is refreshed for efficiency reasons.
+     *
+     * In more detail, we:
+     * (a) request current cursor position,
+     * (b) move cursor far right,
+     * (c) request cursor position again,
+     * (d) at last move back to the old position.
+     * This gives us the width without messing with the externally
+     * visible cursor position.
      */
+
     if (current->cols == 0) {
+        int here;
+
         current->cols = 80;
 
-        /* Move cursor far right and report cursor position, then back to the left */
-        fd_printf(current->fd, "\x1b[999C" "\x1b[6n");
+	/* (a) */
+	if (queryCursor (current->fd, &here)) {
+	    /* (b) */
+	    fd_printf(current->fd, "\x1b[999C");
 
-        /* Parse the response: ESC [ rows ; cols R */
-        if (fd_read_char(current->fd, 100) == 0x1b && fd_read_char(current->fd, 100) == '[') {
-            int n = 0;
-            while (1) {
-                int ch = fd_read_char(current->fd, 100);
-                if (ch == ';') {
-                    /* Ignore rows */
-                    n = 0;
-                }
-                else if (ch == 'R') {
-                    /* Got cols */
-                    if (n != 0 && n < 1000) {
-                        current->cols = n;
-                    }
-                    break;
-                }
-                else if (ch >= 0 && ch <= '9') {
-                    n = n * 10 + ch - '0';
-                }
-                else {
-                    break;
-                }
-            }
-        }
+	    /* (c). Note: If (a) succeeded, then (c) should as well.
+	     * For paranoia we still check and have a fallback action
+	     * for (d) in case of failure..
+	     */
+	    if (!queryCursor (current->fd, &current->cols)) {
+	        /* (d') Unable to get accurate position data, reset
+		 * the cursor to the far left. While this may not
+		 * restore the exact original position it should not
+		 * be too bad.
+		 */
+	        fd_printf(current->fd, "\r");
+	    } else {
+	        /* (d) Reset the cursor back to the original location. */
+
+	        int delta = current->cols - here;
+		if (delta > 0) {
+		    fd_printf(current->fd, "\x1b[%dD",delta);
+		}
+	    }
+	} /* 1st query failed, doing nothing => default 80 */
     }
+
     return 0;
 }
 
