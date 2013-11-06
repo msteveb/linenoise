@@ -159,6 +159,9 @@ static int history_max_len = LINENOISE_DEFAULT_HISTORY_MAX_LEN;
 static int history_len = 0;
 static char **history = NULL;
 
+/* input mode: hidden vs. regular */
+static int is_hidden = 0;
+
 /* Structure to contain the status of the current (being edited) line */
 struct current {
     char *buf;  /* Current buffer. Always null terminated */
@@ -860,13 +863,22 @@ static void refreshLine(const char *prompt, struct current *current)
     for (i = 0; i < chars; i++) {
         int ch;
         int w = utf8_tounicode(buf + b, &ch);
-        if (ch < ' ') {
+        if (!is_hidden && ch < ' ') {
             n++;
         }
         if (pchars + i + n >= current->cols) {
             break;
         }
-        if (ch < ' ') {
+        if (is_hidden) {
+            /* In hidden mode all user-entered characters are shown as
+             * astericks ('*'). This is like control chars, except for
+             * a different translation. */
+            /* assert (b == 0) */
+            outputChars(current, "*", 1);
+            buf += w;
+            /* keep b = 0; */
+        }
+        else if (ch < ' ') {
             /* A control character, so write the buffer so far */
             outputChars(current, buf, b);
             buf += b + w;
@@ -880,6 +892,8 @@ static void refreshLine(const char *prompt, struct current *current)
             b += w;
         }
     }
+
+    /* if (is_hidden) assert (b==0) */
     outputChars(current, buf, b);
 
     /* Erase to right, move cursor to original position */
@@ -956,7 +970,7 @@ static int insert_char(struct current *current, int pos, int ch)
 
 #ifdef USE_TERMIOS
         /* optimise the case where adding a single char to the end and no scrolling is needed */
-        if (current->pos == pos && current->chars == pos) {
+        if (!is_hidden && current->pos == pos && current->chars == pos) {
             if (ch >= ' ' && utf8_strlen(current->prompt, -1) + utf8_strlen(current->buf, current->len) < current->cols - 1) {
                 IGNORE_RC(write(current->fd, buf, n));
                 ret = 2;
@@ -1135,10 +1149,14 @@ static int linenoiseEdit(struct current *current) {
         int c = fd_read(current);
 
 #ifndef NO_COMPLETION
-        /* Only autocomplete when the callback is set. It returns < 0 when
+        /* Completion is forbidden for hidden input mode.
+         * Only autocomplete when the callback is set. It returns < 0 when
          * there was an error reading from fd. Otherwise it will return the
          * character that should be handled next. */
-        if (c == '\t' && current->pos == current->chars && completionCallback != NULL) {
+        if (c == '\t' &&
+            !is_hidden &&
+            current->pos == current->chars &&
+            completionCallback != NULL) {
             c = completeLine(current);
             /* Return on errors */
             if (c < 0) return current->len;
@@ -1205,7 +1223,8 @@ process_char:
             }
             break;
         case ctrl('R'):    /* ctrl-r */
-            {
+            /* Hidden input mode disables use of the history */
+            if (!is_hidden) {
                 /* Display the reverse-i-search prompt and process chars */
                 char rbuf[50];
                 char rprompt[80];
@@ -1360,7 +1379,8 @@ process_char:
         case ctrl('N'):
         case SPECIAL_DOWN:
 history_navigation:
-            if (history_len > 1) {
+            /* Hidden input mode disables use of the history */
+            if (!is_hidden && history_len > 1) {
                 /* Update the current history entry before to
                  * overwrite it with tne next one. */
                 free(history[history_len - 1 - history_index]);
@@ -1470,6 +1490,16 @@ char *linenoise(const char *prompt)
         }
     }
     return strdup(buf);
+}
+
+void linenoiseSetHidden(int enable)
+{
+    is_hidden = enable;
+}
+
+int linenoiseGetHidden(void)
+{
+    return is_hidden;
 }
 
 /* Using a circular buffer is smarter, but a bit more complex to handle. */
