@@ -197,7 +197,7 @@ void linenoiseHistoryFree(void) {
 
 #if defined(USE_TERMIOS)
 static void linenoiseAtExit(void);
-static struct termios orig_termios; /* in order to restore at exit */
+static struct termios raw_termios, orig_termios; /* in order to restore at exit */
 static int rawmode = 0; /* for atexit() function to check if restore is needed*/
 static int atexit_registered = 0; /* register atexit just 1 time */
 
@@ -218,8 +218,7 @@ static int isUnsupportedTerm(void) {
 }
 
 static int enableRawMode(struct current *current) {
-    struct termios raw;
-
+    
     current->fd = STDIN_FILENO;
     current->cols = 0;
 
@@ -235,23 +234,23 @@ fatal:
         atexit_registered = 1;
     }
 
-    raw = orig_termios;  /* modify the original mode */
+    raw_termios = orig_termios;  /* modify the original mode */
     /* input modes: no break, no CR to NL, no parity check, no strip char,
      * no start/stop output control. */
-    raw.c_iflag &= ~(BRKINT | ICRNL | INPCK | ISTRIP | IXON);
-    /* output modes - disable post processing */
-    raw.c_oflag &= ~(OPOST);
+    raw_termios.c_iflag &= ~(BRKINT | ICRNL | INPCK | ISTRIP | IXON);
+    /* output modes - keep post processing */
+    raw_termios.c_oflag |= (OPOST | ONLCR | OCRNL);
     /* control modes - set 8 bit chars */
-    raw.c_cflag |= (CS8);
+    raw_termios.c_cflag |= (CS8);
     /* local modes - choing off, canonical off, no extended functions,
      * no signal chars (^Z,^C) */
-    raw.c_lflag &= ~(ECHO | ICANON | IEXTEN | ISIG);
+    raw_termios.c_lflag &= ~(ECHO | ICANON | IEXTEN | ISIG);
     /* control chars - set return condition: min number of bytes and timer.
      * We want read to return every single byte, without timeout. */
-    raw.c_cc[VMIN] = 1; raw.c_cc[VTIME] = 0; /* 1 byte, no timer */
+    raw_termios.c_cc[VMIN] = 1; raw_termios.c_cc[VTIME] = 0; /* 1 byte, no timer */
 
     /* put terminal in raw mode after flushing */
-    if (tcsetattr(current->fd,TCSADRAIN,&raw) < 0) {
+    if (tcsetattr(current->fd,TCSADRAIN,&raw_termios) < 0) {
         goto fatal;
     }
     rawmode = 1;
@@ -262,6 +261,28 @@ static void disableRawMode(struct current *current) {
     /* Don't even check the return value as it's too late. */
     if (rawmode && tcsetattr(current->fd,TCSADRAIN,&orig_termios) != -1)
         rawmode = 0;
+}
+
+// HLP Added enable/disableRawModeOutput()
+// These two functions enable/disable the raw output mode of the terminal
+static int enableRawModeOutput(int fd) {
+  raw_termios.c_oflag &= ~(OPOST);
+  /* put terminal in raw mode after flushing */
+  if (tcsetattr(fd, TCSADRAIN, &raw_termios) < 0) {
+    errno = ENOTTY;
+    return -1;
+  }
+  return 0;
+}
+
+static int disableRawModeOutput(int fd) {
+  raw_termios.c_oflag |= (OPOST);
+  /* put terminal in raw mode after flushing */
+  if (tcsetattr(fd, TCSADRAIN, &raw_termios) < 0) {
+    errno = ENOTTY;
+    return -1;
+  }
+  return 0;
 }
 
 /* At exit we'll try to fix the terminal to the initial conditions. */
@@ -287,10 +308,14 @@ static void fd_printf(int fd, const char *format, ...)
     char buf[64];
     int n;
 
+    enableRawModeOutput(fd);
+    
     va_start(args, format);
     n = vsnprintf(buf, sizeof(buf), format, args);
     va_end(args);
     IGNORE_RC(write(fd, buf, n));
+    
+    disableRawModeOutput(fd);
 }
 
 static void clearScreen(struct current *current)
