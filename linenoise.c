@@ -139,6 +139,7 @@
 #define LINENOISE_MAX_LINE 4096
 
 #define ctrl(C) ((C) - '@')
+#define LINENOISE_ISASCII(ch)   (0 == ((ch) & (~0x7f)))
 
 /* Use -ve numbers here to co-exist with normal unicode chars */
 enum {
@@ -687,7 +688,7 @@ static int outputChars(struct current *current, const char *buf, int len)
         /* fixed display utf8 character */
         WriteConsoleOutputCharacterW(current->outh, &wc, 1, pos, &n);
 
-        current->x += (isascii(wc) ? 1 : 2);
+        current->x += (LINENOISE_ISASCII(wc) ? 1 : 2);
     }
 #else
     pos.X = (SHORT)current->x;
@@ -933,7 +934,7 @@ static void refreshLine(const char *prompt, struct current *current)
 
 #ifdef USE_UTF8
         /* fixed utf8 character cursor position */
-        if ( !isascii(ch) ) {
+        if ( !LINENOISE_ISASCII(ch) ) {
             pos += 1;
         }
 #endif
