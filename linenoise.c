@@ -775,7 +775,7 @@ static int fd_read(struct current *current)
             }
             /* Note that control characters are already translated in AsciiChar */
             else if (k->wVirtualKeyCode == VK_CONTROL)
-            continue;
+                continue;
             else {
 #ifdef USE_UTF8
                 return k->uChar.UnicodeChar;
