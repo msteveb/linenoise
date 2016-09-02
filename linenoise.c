@@ -775,7 +775,7 @@ static int fd_read(struct current *current)
             }
             /* Note that control characters are already translated in AsciiChar */
             else if (k->wVirtualKeyCode == VK_CONTROL)
-	        continue;
+            continue;
             else {
 #ifdef USE_UTF8
                 return k->uChar.UnicodeChar;
@@ -850,7 +850,7 @@ static void refreshLine(const char *prompt, struct current *current)
     int pos = current->pos;
     int b;
     int ch;
-    int n;
+    int n, u = 0;
 
     /* Should intercept SIGWINCH. For now, just get the size every time */
     getWindowSize(current);
@@ -877,6 +877,12 @@ static void refreshLine(const char *prompt, struct current *current)
         if (ch < ' ') {
             n++;
         }
+
+#ifdef USE_UTF8
+        if ( !LINENOISE_ISASCII(ch) ) {
+            u++;
+        }
+#endif
     }
 
     /* If too many are needed, strip chars off the front of 'buf'
@@ -931,19 +937,12 @@ static void refreshLine(const char *prompt, struct current *current)
         else {
             b += w;
         }
-
-#ifdef USE_UTF8
-        /* fixed utf8 character cursor position */
-        if ( !LINENOISE_ISASCII(ch) ) {
-            pos += 1;
-        }
-#endif
     }
     outputChars(current, buf, b);
 
     /* Erase to right, move cursor to original position */
     eraseEol(current);
-    setCursorPos(current, pos + pchars + backup);
+    setCursorPos(current, pos + u + pchars + backup);
 }
 
 static void set_current(struct current *current, const char *str)
