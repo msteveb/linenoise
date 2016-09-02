@@ -639,11 +639,15 @@ void linenoiseClearScreen(void)
     COORD topleft = { 0, 0 };
     DWORD n;
 
+    struct current current;
+
+    getWindowSize(&current);
+
     FillConsoleOutputCharacter(fh, ' ',
-        current->cols * current->rows, topleft, &n);
+        current.cols * current.rows, topleft, &n);
     FillConsoleOutputAttribute(fh,
         FOREGROUND_RED | FOREGROUND_BLUE | FOREGROUND_GREEN,
-        current->cols * current->rows, topleft, &n);
+        current.cols * current.rows, topleft, &n);
     SetConsoleCursorPosition(fh, topleft);
 }
 
@@ -665,11 +669,34 @@ static int outputChars(struct current *current, const char *buf, int len)
     COORD pos;
     DWORD n;
 
+#ifdef USE_UTF8
+    while ( len > 0 ) {
+        int c, s;
+        wchar_t wc;
+
+        s = utf8_tounicode(buf, &c);
+
+        len -= s;
+        buf += s;
+
+        wc = (wchar_t)c;
+
+        pos.X = (SHORT)current->x;
+        pos.Y = (SHORT)current->y;
+
+        /* fixed display utf8 character */
+        WriteConsoleOutputCharacterW(current->outh, &wc, 1, pos, &n);
+
+        current->x += (isascii(wc) ? 1 : 2);
+    }
+#else
     pos.X = (SHORT)current->x;
     pos.Y = (SHORT)current->y;
 
-    WriteConsoleOutputCharacter(current->outh, buf, len, pos, &n);
+    WriteConsoleOutputCharacterA(current->outh, buf, len, pos, &n);
     current->x += len;
+#endif
+
     return 0;
 }
 
@@ -903,6 +930,13 @@ static void refreshLine(const char *prompt, struct current *current)
         else {
             b += w;
         }
+
+#ifdef USE_UTF8
+        /* fixed utf8 character cursor position */
+        if ( !isascii(ch) ) {
+            pos += 1;
+        }
+#endif
     }
     outputChars(current, buf, b);
 

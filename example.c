@@ -58,10 +58,15 @@ int main(int argc, char *argv[]) {
             /* The "/historylen" command will change the history len. */
             int len = atoi(line+11);
             linenoiseHistorySetMaxLen(len);
+        } else if (!strncmp(line,"/quit",5)) {
+            break;
         } else if (line[0] == '/') {
             printf("Unreconized command: %s\n", line);
         }
         free(line);
     }
+
+    linenoiseHistoryFree();
+
     return 0;
 }

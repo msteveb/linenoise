@@ -16,7 +16,7 @@
 int utf8_fromunicode(char *p, unsigned short uc)
 {
     if (uc <= 0x7f) {
-        *p = uc;
+        *p = (char)uc;
         return 1;
     }
     else if (uc <= 0x7ff) {
