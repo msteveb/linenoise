@@ -139,7 +139,6 @@
 #define LINENOISE_MAX_LINE 4096
 
 #define ctrl(C) ((C) - '@')
-#define LINENOISE_ISASCII(ch)   (0 == ((ch) & (~0x7f)))
 
 /* Use -ve numbers here to co-exist with normal unicode chars */
 enum {
@@ -635,21 +634,22 @@ static void disableRawMode(struct current *current)
 
 void linenoiseClearScreen(void)
 {
-    HANDLE fh = GetStdHandle(STD_OUTPUT_HANDLE);
-
-    COORD topleft = { 0, 0 };
-    DWORD n;
-
+    /* XXX: This is ugly. Should just have the caller pass a handle */
     struct current current;
 
-    getWindowSize(&current);
+    current.outh = GetStdHandle(STD_OUTPUT_HANDLE);
 
-    FillConsoleOutputCharacter(fh, ' ',
-        current.cols * current.rows, topleft, &n);
-    FillConsoleOutputAttribute(fh,
-        FOREGROUND_RED | FOREGROUND_BLUE | FOREGROUND_GREEN,
-        current.cols * current.rows, topleft, &n);
-    SetConsoleCursorPosition(fh, topleft);
+    if (getWindowSize(&current) == 0) {
+        COORD topleft = { 0, 0 };
+        DWORD n;
+
+        FillConsoleOutputCharacter(current.outh, ' ',
+            current.cols * current.rows, topleft, &n);
+        FillConsoleOutputAttribute(current.outh,
+            FOREGROUND_RED | FOREGROUND_BLUE | FOREGROUND_GREEN,
+            current.cols * current.rows, topleft, &n);
+        SetConsoleCursorPosition(current.outh, topleft);
+    }
 }
 
 static void cursorToLeft(struct current *current)
@@ -688,7 +688,7 @@ static int outputChars(struct current *current, const char *buf, int len)
         /* fixed display utf8 character */
         WriteConsoleOutputCharacterW(current->outh, &wc, 1, pos, &n);
 
-        current->x += (LINENOISE_ISASCII(wc) ? 1 : 2);
+        current->x += utf8_columnlen(c);
     }
 #else
     pos.X = (SHORT)current->x;
@@ -850,13 +850,15 @@ static void refreshLine(const char *prompt, struct current *current)
     int pos = current->pos;
     int b;
     int ch;
-    int n, u = 0;
+    int n;
+    int p;
 
     /* Should intercept SIGWINCH. For now, just get the size every time */
     getWindowSize(current);
 
     plen = strlen(prompt);
-    pchars = utf8_strlen(prompt, plen);
+    p = utf8_strlen(prompt, plen);
+    pchars = utf8_columnpos(prompt, p);
 
     /* Scan the prompt for embedded ansi color control sequences and
      * discount them as characters/columns.
@@ -870,19 +872,14 @@ static void refreshLine(const char *prompt, struct current *current)
     /* How many cols are required to the left of 'pos'?
      * The prompt, plus one extra for each control char
      */
-    n = pchars + utf8_strlen(buf, current->len);
+    p = utf8_strlen(buf, current->len);
+    n = pchars + utf8_columnpos(buf, p);
     b = 0;
     for (i = 0; i < pos; i++) {
         b += utf8_tounicode(buf + b, &ch);
         if (ch < ' ') {
             n++;
         }
-
-#ifdef USE_UTF8
-        if ( !LINENOISE_ISASCII(ch) ) {
-            u++;
-        }
-#endif
     }
 
     /* If too many are needed, strip chars off the front of 'buf'
@@ -898,7 +895,9 @@ static void refreshLine(const char *prompt, struct current *current)
         if (ch < ' ') {
             n--;
         }
-        n--;
+        
+        n -= utf8_columnlen(ch);
+
         buf += b;
         pos--;
         chars--;
@@ -942,7 +941,7 @@ static void refreshLine(const char *prompt, struct current *current)
 
     /* Erase to right, move cursor to original position */
     eraseEol(current);
-    setCursorPos(current, pos + u + pchars + backup);
+    setCursorPos(current, utf8_columnpos(buf, pos) + pchars + backup);
 }
 
 static void set_current(struct current *current, const char *str)
