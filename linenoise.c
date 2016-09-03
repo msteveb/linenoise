@@ -670,11 +670,34 @@ static int outputChars(struct current *current, const char *buf, int len)
     COORD pos;
     DWORD n;
 
+#ifdef USE_UTF8
+    while ( len > 0 ) {
+        int c, s;
+        wchar_t wc;
+
+        s = utf8_tounicode(buf, &c);
+
+        len -= s;
+        buf += s;
+
+        wc = (wchar_t)c;
+
+        pos.X = (SHORT)current->x;
+        pos.Y = (SHORT)current->y;
+
+        /* fixed display utf8 character */
+        WriteConsoleOutputCharacterW(current->outh, &wc, 1, pos, &n);
+
+        current->x += utf8_columnlen(c);
+    }
+#else
     pos.X = (SHORT)current->x;
     pos.Y = (SHORT)current->y;
 
-    WriteConsoleOutputCharacter(current->outh, buf, len, pos, &n);
+    WriteConsoleOutputCharacterA(current->outh, buf, len, pos, &n);
     current->x += len;
+#endif
+
     return 0;
 }
 
@@ -752,7 +775,7 @@ static int fd_read(struct current *current)
             }
             /* Note that control characters are already translated in AsciiChar */
             else if (k->wVirtualKeyCode == VK_CONTROL)
-	        continue;
+                continue;
             else {
 #ifdef USE_UTF8
                 return k->uChar.UnicodeChar;
@@ -828,12 +851,14 @@ static void refreshLine(const char *prompt, struct current *current)
     int b;
     int ch;
     int n;
+    int p;
 
     /* Should intercept SIGWINCH. For now, just get the size every time */
     getWindowSize(current);
 
     plen = strlen(prompt);
-    pchars = utf8_strlen(prompt, plen);
+    p = utf8_strlen(prompt, plen);
+    pchars = utf8_columnpos(prompt, p);
 
     /* Scan the prompt for embedded ansi color control sequences and
      * discount them as characters/columns.
@@ -847,7 +872,8 @@ static void refreshLine(const char *prompt, struct current *current)
     /* How many cols are required to the left of 'pos'?
      * The prompt, plus one extra for each control char
      */
-    n = pchars + utf8_strlen(buf, current->len);
+    p = utf8_strlen(buf, current->len);
+    n = pchars + utf8_columnpos(buf, p);
     b = 0;
     for (i = 0; i < pos; i++) {
         b += utf8_tounicode(buf + b, &ch);
@@ -869,7 +895,9 @@ static void refreshLine(const char *prompt, struct current *current)
         if (ch < ' ') {
             n--;
         }
-        n--;
+
+        n -= utf8_columnlen(ch);
+
         buf += b;
         pos--;
         chars--;
@@ -886,13 +914,17 @@ static void refreshLine(const char *prompt, struct current *current)
      */
     b = 0; /* unwritted bytes */
     n = 0; /* How many control chars were written */
+    p = 0; /* column length */
     for (i = 0; i < chars; i++) {
         int ch;
         int w = utf8_tounicode(buf + b, &ch);
         if (ch < ' ') {
             n++;
         }
-        if (pchars + i + n >= current->cols) {
+
+        p += utf8_columnlen(ch);
+
+        if (pchars + p + n >= current->cols) {
             break;
         }
         if (ch < ' ') {
@@ -913,7 +945,7 @@ static void refreshLine(const char *prompt, struct current *current)
 
     /* Erase to right, move cursor to original position */
     eraseEol(current);
-    setCursorPos(current, pos + pchars + backup);
+    setCursorPos(current, utf8_columnpos(buf, pos) + pchars + backup);
 }
 
 static void set_current(struct current *current, const char *str)

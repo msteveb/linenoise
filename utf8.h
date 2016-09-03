@@ -16,6 +16,8 @@
 #define utf8_tounicode(S, CP) (*(CP) = (unsigned char)*(S), 1)
 #define utf8_index(C, I) (I)
 #define utf8_charlen(C) 1
+#define utf8_columnlen(C) 1
+#define utf8_columnpos(S, P) (P)
 
 #else
 /**
@@ -73,6 +75,16 @@ int utf8_index(const char *str, int charindex);
  * Does not support unicode code points > \uffff
  */
 int utf8_tounicode(const char *str, int *uc);
+
+/**
+ * Returns the column length of the character
+ */
+int utf8_columnlen(int c);
+
+/**
+ * Returns the column length from begining of buffer to current position.
+ */
+int utf8_columnpos(const char *str, int pos);
 
 #endif
 
