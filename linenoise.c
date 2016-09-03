@@ -895,7 +895,7 @@ static void refreshLine(const char *prompt, struct current *current)
         if (ch < ' ') {
             n--;
         }
-        
+
         n -= utf8_columnlen(ch);
 
         buf += b;
@@ -914,13 +914,17 @@ static void refreshLine(const char *prompt, struct current *current)
      */
     b = 0; /* unwritted bytes */
     n = 0; /* How many control chars were written */
+    p = 0; /* column length */
     for (i = 0; i < chars; i++) {
         int ch;
         int w = utf8_tounicode(buf + b, &ch);
         if (ch < ' ') {
             n++;
         }
-        if (pchars + i + n >= current->cols) {
+
+        p += utf8_columnlen(ch);
+
+        if (pchars + p + n >= current->cols) {
             break;
         }
         if (ch < ' ') {
