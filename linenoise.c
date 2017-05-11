@@ -129,6 +129,7 @@
 #include <stdio.h>
 #include <errno.h>
 #include <string.h>
+#include <strings.h> /*strcasecmp()*/
 #include <stdlib.h>
 #include <sys/types.h>
 
