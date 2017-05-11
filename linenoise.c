@@ -1381,6 +1381,14 @@ process_char:
                 insert_char(current, current->pos - 1, c);
                 refreshLine(current->prompt, current);
             }
+	    /* Transposition with cursor at the end is possible, take
+	     * the last 2 characters. This is how bash does it. */
+            else if (current->pos == current->chars) {
+                c = get_char(current, current->pos-1);
+                remove_char(current, current->pos-1);
+                insert_char(current, current->pos - 1, c);
+                refreshLine(current->prompt, current);
+            }
             break;
         case ctrl('V'):    /* ctrl-v */
             if (has_room(current, 3)) {
