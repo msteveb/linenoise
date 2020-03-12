@@ -1016,8 +1016,10 @@ static void refreshEnd(struct current *current)
     current->output = NULL;
 }
 
-static void refreshStartChars()
+static void refreshStartChars(struct current *current)
 {
+    if (!current)
+        return;
 }
 
 static void refreshNewline(struct current *current)
@@ -1026,8 +1028,10 @@ static void refreshNewline(struct current *current)
     outputChars(current, "\n", 1);
 }
 
-static void refreshEndChars()
+static void refreshEndChars(struct current *current)
 {
+    if (!current)
+        return;
 }
 #endif
 
