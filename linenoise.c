@@ -1630,7 +1630,9 @@ static int linenoiseEdit(struct current *current) {
                 return -1;
             }
             /* Otherwise fall through to delete char to right of cursor */
+	    goto SPECIAL_DELETE_FALLTHROUGH;
         case SPECIAL_DELETE:
+            SPECIAL_DELETE_FALLTHROUGH:
             if (remove_char(current, current->pos) == 1) {
                 refreshLine(current);
             }
