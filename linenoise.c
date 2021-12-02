@@ -1910,7 +1910,7 @@ char *linenoise(const char *prompt)
 }
 
 /* Using a circular buffer is smarter, but a bit more complex to handle. */
-int linenoiseHistoryAddAllocated(char *line) {
+static int linenoiseHistoryAddAllocated(char *line) {
 
     if (history_max_len == 0) {
 notinserted:
