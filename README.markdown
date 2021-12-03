@@ -58,8 +58,9 @@ In reverse incremental search:
 
     Normal char       Add char to incremental search word
     ctrl-h, Backspace Remove last char from incremental search word
-    ctrl-p, Up        Move to previous match
-    ctrl-n, Down      Move to next match
+    ctrl-r            Move to previous match
+    ctrl-p, Up        Return to normal mode with previous line
+    ctrl-n, Down      Return to normal mode with next line
     ctrl-g, ctrl-c    Return to normal mode with empty line
     Any other key     Return to normal mode with the current line and process the key
 

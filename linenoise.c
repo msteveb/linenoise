@@ -1476,7 +1476,7 @@ static int skip_nonspace(struct current *current, int dir)
 /**
  * Returns the keycode to process, or 0 if none.
  */
-static int reverseIncrementalSearch(struct current *current)
+static int reverseIncrementalSearch(struct current *current, int *history_index)
 {
     /* Display the reverse-i-search prompt and process chars */
     char rbuf[50];
@@ -1509,20 +1509,38 @@ static int reverseIncrementalSearch(struct current *current)
             c = check_special(current->fd);
         }
 #endif
-        if (c == ctrl('P') || c == SPECIAL_UP) {
+        if (c == ctrl('R')) {
             /* Search for the previous (earlier) match */
             if (searchpos > 0) {
                 searchpos--;
             }
             skipsame = 1;
         }
+        else if (c == ctrl('P') || c == SPECIAL_UP) {
+            /* Exit Ctrl-R mode and go to the previous history line */
+            searchpos = history_len - 1 - *history_index;
+            if (searchpos > 0) {
+                searchpos--;
+            }
+            if (searchpos >= 0) {
+                *history_index = history_len - 1 - searchpos;
+                set_current(current,history[searchpos]);
+            }
+            c = 0;
+            break;
+        }
         else if (c == ctrl('N') || c == SPECIAL_DOWN) {
-            /* Search for the next (later) match */
+            /* Exit Ctrl-R mode and go to the next history line */
+            searchpos = history_len - 1 - *history_index;
             if (searchpos < history_len) {
                 searchpos++;
             }
-            searchdir = 1;
-            skipsame = 1;
+            if (searchpos >= 0) {
+                *history_index = history_len - 1 - searchpos;
+                set_current(current,history[searchpos]);
+            }
+            c = 0;
+            break;
         }
         else if (c >= ' ' && c <= '~') {
             /* >= here to allow for null terminator */
@@ -1553,6 +1571,7 @@ static int reverseIncrementalSearch(struct current *current)
                     continue;
                 }
                 /* Copy the matching line and set the cursor position */
+                *history_index = history_len - 1 - searchpos;
                 set_current(current,history[searchpos]);
                 current->pos = utf8_strlen(history[searchpos], p - history[searchpos]);
                 break;
@@ -1568,13 +1587,14 @@ static int reverseIncrementalSearch(struct current *current)
     if (c == ctrl('G') || c == ctrl('C')) {
         /* ctrl-g terminates the search with no effect */
         set_current(current, "");
+        *history_index = 0;
         c = 0;
     }
     else if (c == ctrl('J')) {
         /* ctrl-j terminates the search leaving the buffer in place */
+        *history_index = 0;
         c = 0;
     }
-
     /* Go process the char normally */
     refreshLine(current);
     return c;
@@ -1599,7 +1619,7 @@ static int linenoiseEdit(struct current *current) {
 #endif
         if (c == ctrl('R')) {
             /* reverse incremental search will provide an alternative keycode or 0 for none */
-            c = reverseIncrementalSearch(current);
+            c = reverseIncrementalSearch(current, &history_index);
             /* go on to process the returned char normally */
         }
 
