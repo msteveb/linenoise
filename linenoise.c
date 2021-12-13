@@ -1549,6 +1549,14 @@ static int reverseIncrementalSearch(struct current *current)
             }
             skipsame = 1;
         }
+        else if (c == ctrl('S')) {
+            /* Search for the next (later) match */
+            if (searchpos < history_len) {
+                searchpos++;
+            }
+            searchdir = 1;
+            skipsame = 1;
+        }
         else if (c == ctrl('P') || c == SPECIAL_UP) {
             /* Exit Ctrl-R mode and go to the previous history line from the current search pos */
             set_history_index(current, history_len - searchpos);
