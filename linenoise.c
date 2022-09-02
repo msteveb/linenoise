@@ -878,7 +878,10 @@ linenoiseCompletionCallback * linenoiseSetCompletionCallback(linenoiseCompletion
 }
 
 void linenoiseAddCompletion(linenoiseCompletions *lc, const char *str) {
-    lc->cvec = (char **)realloc(lc->cvec,sizeof(char*)*(lc->len+1));
+    char **tmp = (char **)realloc(lc->cvec, sizeof(char*)*(lc->len+1));
+    if (!tmp)
+        return;
+    lc->cvec = tmp;
     lc->cvec[lc->len++] = strdup(str);
 }
 
@@ -1785,8 +1788,11 @@ history_navigation:
             if (history_len > 1) {
                 /* Update the current history entry before to
                  * overwrite it with tne next one. */
-                free(history[history_len - 1 - history_index]);
-                history[history_len - 1 - history_index] = strdup(sb_str(current->buf));
+                int index = history_len - 1 - history_index;
+                free(history[index]);
+                history[index] = strdup(sb_str(current->buf));
+                if (!history[index])
+                    return -1;
                 /* Show the new entry */
                 history_index += dir;
                 if (history_index < 0) {
@@ -1951,6 +1957,8 @@ notinserted:
     }
     if (history == NULL) {
         history = (char **)calloc(sizeof(char*), history_max_len);
+        if (!history)
+            goto notinserted;
     }
 
     /* do not insert duplicate lines into history */
@@ -1969,7 +1977,10 @@ notinserted:
 }
 
 int linenoiseHistoryAdd(const char *line) {
-    return linenoiseHistoryAddAllocated(strdup(line));
+    char *new_line = strdup(line);
+    if (!new_line)
+        return 0;
+    return linenoiseHistoryAddAllocated(new_line);
 }
 
 int linenoiseHistoryGetMaxLen(void) {
@@ -1984,6 +1995,8 @@ int linenoiseHistorySetMaxLen(int len) {
         int tocopy = history_len;
 
         newHistory = (char **)calloc(sizeof(char*), len);
+        if (!newHistory)
+            return 0;
 
         /* If we can't copy everything, free the elements we'll not use. */
         if (len < tocopy) {
@@ -2036,8 +2049,8 @@ int linenoiseHistorySave(const char *filename) {
 
 /* Load the history from the specified file.
  *
- * If the file does not exist or can't be opened, no operation is performed
- * and -1 is returned.
+ * If the file does not exist or can't be opened, or memory allocation fails,
+ * no operation is performed and -1 is returned.
  * Otherwise 0 is returned.
  */
 int linenoiseHistoryLoad(const char *filename) {
@@ -2049,6 +2062,10 @@ int linenoiseHistoryLoad(const char *filename) {
     while ((sb = sb_getline(fp)) != NULL) {
         /* Take the stringbuf and decode backslash escaped values */
         char *buf = sb_to_string(sb);
+        if (!buf) {
+            fclose(fp);
+            return -1;
+        }
         char *dest = buf;
         const char *src;
 
