@@ -115,10 +115,6 @@
 #define USE_WINCONSOLE
 #ifdef __MINGW32__
 #define HAVE_UNISTD_H
-#else
-/* Microsoft headers don't like old POSIX names */
-#define strdup _strdup
-#define snprintf _snprintf
 #endif
 #else
 #include <termios.h>
@@ -140,6 +136,12 @@
 #include <signal.h>
 #include <stdlib.h>
 #include <sys/types.h>
+
+#if defined(_WIN32) && !defined(__MINGW32__)
+/* Microsoft headers don't like old POSIX names */
+#define strdup _strdup
+#define snprintf _snprintf
+#endif
 
 #include "linenoise.h"
 #ifndef STRINGBUF_H
