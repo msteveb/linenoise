@@ -1871,7 +1871,7 @@ static stringbuf *sb_getline(FILE *fh)
         /* ignore the effect of character count for partial utf8 sequences */
         sb_append_len(sb, &ch, 1);
     }
-    if (n == 0) {
+    if (n == 0 || sb->data == NULL) {
         sb_free(sb);
         return NULL;
     }
