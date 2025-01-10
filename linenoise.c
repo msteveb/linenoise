@@ -197,6 +197,8 @@ struct current {
     stringbuf *output;  /* used only during refreshLine() - output accumulator */
 #if defined(USE_TERMIOS)
     int fd;     /* Terminal fd */
+    int pending; /* pending char fd_read_char() */
+    int query_cursor_failed; /* if 1, don't try to query the cursor position again */
 #elif defined(USE_WINCONSOLE)
     HANDLE outh; /* Console output handle */
     HANDLE inh; /* Console input handle */
@@ -535,25 +537,31 @@ void linenoiseClearScreen(void)
 }
 
 /**
- * Reads a char from 'fd', waiting at most 'timeout' milliseconds.
+ * Reads a char from 'current->fd', waiting at most 'timeout' milliseconds.
  *
  * A timeout of -1 means to wait forever.
  *
  * Returns -1 if no char is received within the time or an error occurs.
  */
-static int fd_read_char(int fd, int timeout)
+static int fd_read_char(struct current *current, int timeout)
 {
     struct pollfd p;
     unsigned char c;
 
-    p.fd = fd;
+    if (current->pending) {
+        c = current->pending;
+        current->pending = 0;
+        return c;
+    }
+
+    p.fd = current->fd;
     p.events = POLLIN;
 
     if (poll(&p, 1, timeout) == 0) {
         /* timeout */
         return -1;
     }
-    if (read(fd, &c, 1) != 1) {
+    if (read(current->fd, &c, 1) != 1) {
         return -1;
     }
     return c;
@@ -571,7 +579,11 @@ static int fd_read(struct current *current)
     int i;
     int c;
 
-    if (read(current->fd, &buf[0], 1) != 1) {
+    if (current->pending) {
+        buf[0] = current->pending;
+        current->pending = 0;
+    }
+    else if (read(current->fd, &buf[0], 1) != 1) {
         return -1;
     }
     n = utf8_charlen(buf[0]);
@@ -587,7 +599,7 @@ static int fd_read(struct current *current)
     utf8_tounicode(buf, &c);
     return c;
 #else
-    return fd_read_char(current->fd, -1);
+    return fd_read_char(current, -1);
 #endif
 }
 
@@ -601,6 +613,11 @@ static int queryCursor(struct current *current, int* cols)
     struct esc_parser parser;
     int ch;
 
+    if (current->query_cursor_failed) {
+        /* If it every fails, don't try again */
+        return 0;
+    }
+
     /* Should not be buffering this output, it needs to go immediately */
     assert(current->output == NULL);
 
@@ -609,7 +626,7 @@ static int queryCursor(struct current *current, int* cols)
 
     /* Parse the response: ESC [ rows ; cols R */
     initParseEscapeSeq(&parser, 'R');
-    while ((ch = fd_read_char(current->fd, 100)) > 0) {
+    while ((ch = fd_read_char(current, 100)) > 0) {
         switch (parseEscapeSequence(&parser, ch)) {
             default:
                 continue;
@@ -620,11 +637,14 @@ static int queryCursor(struct current *current, int* cols)
                 }
                 break;
             case EP_ERROR:
+                /* Push back the character that caused the error */
+                current->pending = ch;
                 break;
         }
         /* failed */
         break;
     }
+    current->query_cursor_failed = 1;
     return 0;
 }
 
@@ -691,9 +711,9 @@ static int getWindowSize(struct current *current)
  * If no additional char is received within a short time,
  * CHAR_ESCAPE is returned.
  */
-static int check_special(int fd)
+static int check_special(struct current *current)
 {
-    int c = fd_read_char(fd, 50);
+    int c = fd_read_char(current, 50);
     int c2;
 
     if (c < 0) {
@@ -704,7 +724,7 @@ static int check_special(int fd)
         return meta(c);
     }
 
-    c2 = fd_read_char(fd, 50);
+    c2 = fd_read_char(current, 50);
     if (c2 < 0) {
         return c2;
     }
@@ -727,7 +747,7 @@ static int check_special(int fd)
     }
     if (c == '[' && c2 >= '1' && c2 <= '8') {
         /* extended escape */
-        c = fd_read_char(fd, 50);
+        c = fd_read_char(current, 50);
         if (c == '~') {
             switch (c2) {
                 case '2':
@@ -746,7 +766,7 @@ static int check_special(int fd)
         }
         while (c != -1 && c != '~') {
             /* .e.g \e[12~ or '\e[11;2~   discard the complete sequence */
-            c = fd_read_char(fd, 50);
+            c = fd_read_char(current, 50);
         }
     }
 
@@ -1539,7 +1559,7 @@ static int reverseIncrementalSearch(struct current *current)
         }
 #ifdef USE_TERMIOS
         if (c == CHAR_ESCAPE) {
-            c = check_special(current->fd);
+            c = check_special(current);
         }
 #endif
         if (c == ctrl('R')) {
@@ -1651,7 +1671,7 @@ static int linenoiseEdit(struct current *current) {
 
 #ifdef USE_TERMIOS
         if (c == CHAR_ESCAPE) {   /* escape sequence */
-            c = check_special(current->fd);
+            c = check_special(current);
         }
 #endif
         if (c == -1) {
