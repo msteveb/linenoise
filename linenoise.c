@@ -198,7 +198,6 @@ struct current {
 #if defined(USE_TERMIOS)
     int fd;     /* Terminal fd */
     int pending; /* pending char fd_read_char() */
-    int query_cursor_failed; /* if 1, don't try to query the cursor position again */
 #elif defined(USE_WINCONSOLE)
     HANDLE outh; /* Console output handle */
     HANDLE inh; /* Console input handle */
@@ -612,8 +611,12 @@ static int queryCursor(struct current *current, int* cols)
 {
     struct esc_parser parser;
     int ch;
+    /* Unfortunately we don't have any persistent state, so assume
+     * a process will only ever interact with one terminal at a time.
+     */
+    static int query_cursor_failed;
 
-    if (current->query_cursor_failed) {
+    if (query_cursor_failed) {
         /* If it every fails, don't try again */
         return 0;
     }
@@ -644,7 +647,7 @@ static int queryCursor(struct current *current, int* cols)
         /* failed */
         break;
     }
-    current->query_cursor_failed = 1;
+    query_cursor_failed = 1;
     return 0;
 }
 
