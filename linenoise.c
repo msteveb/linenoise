@@ -427,8 +427,11 @@ fatal:
      * We want read to return every single byte, without timeout. */
     raw.c_cc[VMIN] = 1; raw.c_cc[VTIME] = 0; /* 1 byte, no timer */
 
-    /* put terminal in raw mode after flushing */
-    if (tcsetattr(current->fd,TCSADRAIN,&raw) < 0) {
+    /* put terminal in raw mode. Because we aren't changing any output
+     * settings we don't need to use TCSADRAIN and I have seen that hang on
+     * OpenBSD when running under a pty
+     */
+    if (tcsetattr(current->fd,TCSANOW,&raw) < 0) {
         goto fatal;
     }
     rawmode = 1;
@@ -437,14 +440,14 @@ fatal:
 
 static void disableRawMode(struct current *current) {
     /* Don't even check the return value as it's too late. */
-    if (rawmode && tcsetattr(current->fd,TCSADRAIN,&orig_termios) != -1)
+    if (rawmode && tcsetattr(current->fd,TCSANOW,&orig_termios) != -1)
         rawmode = 0;
 }
 
 /* At exit we'll try to fix the terminal to the initial conditions. */
 static void linenoiseAtExit(void) {
     if (rawmode) {
-        tcsetattr(STDIN_FILENO, TCSADRAIN, &orig_termios);
+        tcsetattr(STDIN_FILENO, TCSANOW, &orig_termios);
     }
     linenoiseHistoryFree();
 }
@@ -617,7 +620,7 @@ static int queryCursor(struct current *current, int* cols)
     static int query_cursor_failed;
 
     if (query_cursor_failed) {
-        /* If it every fails, don't try again */
+        /* If it ever fails, don't try again */
         return 0;
     }
 
