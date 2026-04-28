@@ -73,6 +73,16 @@ static void disableRawMode(struct current *current)
     SetConsoleMode(current->inh, orig_consolemode);
 }
 
+static WORD sameBackground(HANDLE outh, WORD foreground)
+{
+    CONSOLE_SCREEN_BUFFER_INFO csbi;
+    if (!GetConsoleScreenBufferInfo(outh, &csbi)) {
+        return foreground;
+    }
+    WORD attrs = csbi.wAttributes;
+    return (attrs & 0xfff0) | (foreground & 0xf);
+}
+
 void linenoiseClearScreen(void)
 {
     /* XXX: This is ugly. Should just have the caller pass a handle */
@@ -87,7 +97,7 @@ void linenoiseClearScreen(void)
         FillConsoleOutputCharacter(current.outh, ' ',
             current.cols * current.rows, topleft, &n);
         FillConsoleOutputAttribute(current.outh,
-            FOREGROUND_RED | FOREGROUND_BLUE | FOREGROUND_GREEN,
+            sameBackground(current.outh, FOREGROUND_RED | FOREGROUND_BLUE | FOREGROUND_GREEN),
             current.cols * current.rows, topleft, &n);
         SetConsoleCursorPosition(current.outh, topleft);
     }
@@ -102,7 +112,8 @@ static void cursorToLeft(struct current *current)
     pos.Y = (SHORT)current->y;
 
     FillConsoleOutputAttribute(current->outh,
-        FOREGROUND_RED | FOREGROUND_BLUE | FOREGROUND_GREEN, current->cols, pos, &n);
+        sameBackground(current->outh, FOREGROUND_RED | FOREGROUND_BLUE | FOREGROUND_GREEN),
+        current->cols, pos, &n);
     current->x = 0;
 }
 
@@ -214,10 +225,10 @@ static void outputNewline(struct current *current)
 
 static void setOutputHighlight(struct current *current, const int *props, int nprops)
 {
-    int colour = FOREGROUND_RED | FOREGROUND_BLUE | FOREGROUND_GREEN;
     int bold = 0;
     int reverse = 0;
     int i;
+    int colour = FOREGROUND_RED | FOREGROUND_BLUE | FOREGROUND_GREEN;
 
     for (i = 0; i < nprops; i++) {
         switch (props[i]) {
@@ -265,6 +276,7 @@ static void setOutputHighlight(struct current *current, const int *props, int np
         SetConsoleTextAttribute(current->outh, BACKGROUND_INTENSITY);
     }
     else {
+        colour = sameBackground(current->outh, colour);
         SetConsoleTextAttribute(current->outh, colour | bold);
     }
 }
