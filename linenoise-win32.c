@@ -73,6 +73,14 @@ static void disableRawMode(struct current *current)
     SetConsoleMode(current->inh, orig_consolemode);
 }
 
+static int color_accepted(void) {
+    char *no_color = getenv("NO_COLOR");
+    bool accept = true;
+    if (no_color != NULL && no_color[0] != '\0')
+            accept = false;
+    return accept;
+}
+
 static WORD sameBackground(HANDLE outh, WORD foreground)
 {
     CONSOLE_SCREEN_BUFFER_INFO csbi;
@@ -96,9 +104,11 @@ void linenoiseClearScreen(void)
 
         FillConsoleOutputCharacter(current.outh, ' ',
             current.cols * current.rows, topleft, &n);
-        FillConsoleOutputAttribute(current.outh,
-            sameBackground(current.outh, FOREGROUND_RED | FOREGROUND_BLUE | FOREGROUND_GREEN),
-            current.cols * current.rows, topleft, &n);
+        if (color_accepted()) {
+            FillConsoleOutputAttribute(current.outh,
+                sameBackground(current.outh, FOREGROUND_RED | FOREGROUND_BLUE | FOREGROUND_GREEN),
+                current.cols * current.rows, topleft, &n);
+        }
         SetConsoleCursorPosition(current.outh, topleft);
     }
 }
@@ -111,9 +121,11 @@ static void cursorToLeft(struct current *current)
     pos.X = 0;
     pos.Y = (SHORT)current->y;
 
-    FillConsoleOutputAttribute(current->outh,
-        sameBackground(current->outh, FOREGROUND_RED | FOREGROUND_BLUE | FOREGROUND_GREEN),
-        current->cols, pos, &n);
+    if (color_accepted()) {
+        FillConsoleOutputAttribute(current->outh,
+            sameBackground(current->outh, FOREGROUND_RED | FOREGROUND_BLUE | FOREGROUND_GREEN),
+            current->cols, pos, &n);
+    }
     current->x = 0;
 }
 
@@ -229,6 +241,11 @@ static void setOutputHighlight(struct current *current, const int *props, int np
     int reverse = 0;
     int i;
     int colour = FOREGROUND_RED | FOREGROUND_BLUE | FOREGROUND_GREEN;
+
+    if (!color_accepted()) {
+        return;
+    }
+
 
     for (i = 0; i < nprops; i++) {
         switch (props[i]) {
