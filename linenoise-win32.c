@@ -75,9 +75,9 @@ static void disableRawMode(struct current *current)
 
 static int color_accepted(void) {
     char *no_color = getenv("NO_COLOR");
-    bool accept = true;
+    int accept = 1;
     if (no_color != NULL && no_color[0] != '\0')
-            accept = false;
+            accept = 0;
     return accept;
 }
 
