@@ -35,7 +35,7 @@ int main(int argc, char *argv[]) {
         argv++;
         if (!strcmp(*argv,"--multiline")) {
             linenoiseSetMultiLine(1);
-            printf("Multi-line mode enabled.\n");
+            //printf("Multi-line mode enabled.\n");
         } else if (!strcmp(*argv,"--fancyprompt")) {
             prompt = "\x1b[1;31m\xf0\xa0\x8a\x9d-\xc2\xb5hello>\x1b[0m ";
         } else if (!strcmp(*argv,"--prompt") && argc > 1) {
