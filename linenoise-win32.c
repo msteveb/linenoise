@@ -169,7 +169,8 @@ static void add_ubuf(struct current *current, int ch)
     else {
         current->ubuf[current->ubuflen++] = ch;
     }
-    current->ubufcols += utf8_width(ch);
+    // XXX Do we need anything else in order to properly support grapheme clusters?
+    current->ubufcols += utf8_dispwidth(ch);
     if (current->ubuflen >= UBUF_MAX_CHARS) {
         flush_ubuf(current);
     }
