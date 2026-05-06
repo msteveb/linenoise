@@ -689,6 +689,13 @@ static int getWindowSize(struct current *current)
 {
     struct winsize ws;
 
+    const char *linenoise_cols = getenv("LINENOISE_COLS");
+    if (linenoise_cols) {
+        /* Just trust what we are given for testing */
+        current->cols = atoi(linenoise_cols);
+        return 0;
+    }
+
     if (ioctl(STDOUT_FILENO, TIOCGWINSZ, &ws) == 0 && ws.ws_col != 0) {
         current->cols = ws.ws_col;
         return 0;

@@ -21,3 +21,13 @@ ship: linenoise-ship.c
 
 linenoise-ship.c: utf8.h utf8.c stringbuf.h stringbuf.c linenoise.c
 	for i in $^; do echo "#line 1 \"$$i\""; cat $$i; done >$@
+
+linenoise-test: linenoise-test.c
+	$(CC) $(CFLAGS) -o $@ linenoise-test.c
+
+test: linenoise-test linenoise-example
+	./linenoise-test
+
+# As above but just show test results
+test-norender: linenoise-test linenoise-example
+	./linenoise-test --norender
