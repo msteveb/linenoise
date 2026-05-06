@@ -383,6 +383,26 @@ static int fd_read(struct current *current)
                 else if (k->wVirtualKeyCode == VK_CONTROL)
                     continue;
                 else {
+                    /* Here we need to check if this is the first half of a surrogate pair,
+                     * and if so wait for the second half. */
+                    if (k->uChar.UnicodeChar >= 0xD800 && k->uChar.UnicodeChar <= 0xDBFF) {
+                        /* This is the first half of a surrogate pair. Wait for the second half. */
+                        INPUT_RECORD irec2;
+                        DWORD n2;
+                        if (!ReadConsoleInputW(current->inh, &irec2, 1, &n2)) {
+                            break;
+                        }
+                        if (irec2.EventType == KEY_EVENT) {
+                            KEY_EVENT_RECORD *k2 = &irec2.Event.KeyEvent;
+                            if (k2->bKeyDown && k2->wVirtualKeyCode != VK_CONTROL &&
+                                k2->uChar.UnicodeChar >= 0xDC00 && k2->uChar.UnicodeChar <= 0xDFFF) {
+                                /* This is the second half of a surrogate pair. Combine them and return the code point. */
+                                int high = k->uChar.UnicodeChar - 0xD800;
+                                int low = k2->uChar.UnicodeChar - 0xDC00;
+                                return (high << 10) + low + 0x10000;
+                            }
+                        }
+                    }
                     return k->uChar.UnicodeChar;
                 }
             }
