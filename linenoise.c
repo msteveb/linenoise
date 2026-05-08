@@ -419,6 +419,13 @@ static int enableRawMode(struct current *current) {
     current->fdout = STDOUT_FILENO;
     current->cols = 0;
 
+    if (getenv("LINENOISE_ASSUME_TTY")) {
+        /* Set no buffering on stdout */
+        setvbuf(stdout, NULL, _IONBF, 0);
+        rawmode = 2;
+        return 0;
+    }
+
     if (!isatty(current->fdin) || isUnsupportedTerm() ||
         tcgetattr(current->fdin, &orig_termios) == -1) {
 fatal:
